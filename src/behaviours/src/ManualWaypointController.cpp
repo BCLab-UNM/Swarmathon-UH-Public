@@ -40,9 +40,7 @@ void ManualWaypointController::SetCurrentLocation(Point currentLocation)
   this->currentLocation = currentLocation;
   if(!waypoints.empty()) {
     std::map<int, Point>::iterator first = waypoints.begin();
-    if(hypot(first->second.x-currentLocation.x,
-             first->second.y-currentLocation.y)
-       < waypoint_tolerance) {
+    if(hypot(first->second.x-currentLocation.x, first->second.y-currentLocation.y) < waypoint_tolerance) {
       cleared_waypoints.push_back(first->first);
       waypoints.erase(first);
     }
@@ -50,7 +48,7 @@ void ManualWaypointController::SetCurrentLocation(Point currentLocation)
 }
 
 void ManualWaypointController::ProcessData()
-{   
+{
 }
 
 void ManualWaypointController::AddManualWaypoint(Point wpt, int id)

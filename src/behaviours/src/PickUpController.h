@@ -12,8 +12,6 @@ public:
 
   void Reset() override;
   Result DoWork() override;
-
-  // Give the controller a list of visible april tags.
   void SetTagData(vector<Tag> tags);
   bool ShouldInterrupt() override;
   bool HasWork() override;
@@ -22,10 +20,6 @@ public:
 
   float getDistance() {return blockDistance;}
   bool GetLockTarget() {return lockTarget;}
-
-  // Give the controller the current ultrasound readings. This is
-  // needed because ultrasound data is used to determine whether a
-  // block has been successfully picked up.
   void SetUltraSoundData(bool blockBlock);
 
   bool GetIgnoreCenter() {return ignoreCenterSonar;}
@@ -33,15 +27,19 @@ public:
 
   void SetCurrentTimeInMilliSecs( long int time );
 
+
+  //Set true when the target block is less than targetDist so we continue attempting to pick it up rather than
+  //switching to another block that is in view. In other words, the robot focuses on one particular target so
+  //it doesn't get confused by having a whole bunch of targets in its view.
+  bool lockTarget;
+
 protected:
 
   void ProcessData();
 
 private:
-  //Set true when the target block is less than targetDist so we continue attempting to pick it up rather than
-  //switching to another block that is in view. In other words, the robot focuses on one particular target so
-  //it doesn't get confused by having a whole bunch of targets in its view.
-  bool lockTarget;
+
+
 
   bool targetFound;
   bool targetHeld;

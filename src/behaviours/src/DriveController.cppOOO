@@ -28,7 +28,7 @@ void DriveController::Reset()
 
 Result DriveController::DoWork()
 {
-
+  
   ///WARNING waypoint input must use FAST_PID at this point in time failure to set fast pid will result in no movment
 
   if(result.type == behavior)
@@ -60,207 +60,150 @@ Result DriveController::DoWork()
   else if(result.type == waypoint)
   {
     //interpret input result as new waypoints to add into the queue
-    ProcessData();//sets state to STATE_MACHINE_WAYPOINTS
+    ProcessData();
 
   }
-  //either precision driving or waypoints
-  //if waypoints, first checks if goal is further than tollerance of current posiont (> 15cm away) or removes point
-  //then rotates if angle is > tollerance. if angle doesnt go within tolerance after rotation skips linear movement
-  //then goes forward until movement is less than tolerance
-  //no break statements if tolerance checks work to auto flow into next case
 
-  switch(stateMachineState)//keeps the states between each call of function
+  switch(stateMachineState)
   {
 
-    //Handlers and the final state of STATE_MACHINE are the only parts allowed to call INTERUPT
-    //This should be done as little as possible. I suggest using timeouts to set control bools to false.
-    //Then only call INTERUPT if bool switches to true.
-    case STATE_MACHINE_PRECISION_DRIVING:
+  //Handlers and the final state of STATE_MACHINE are the only parts allowed to call INTERUPT
+  //This should be d one as little as possible. I suggest using timeouts to set control bools to false.
+  //Then only call INTERUPT if bool switches to true.
+  case STATE_MACHINE_PRECISION_DRIVING:
+  {
+
+    ProcessData();
+    break;
+  }
+
+
+  case STATE_MACHINE_WAYPOINTS:
+  {
+
+    //Handles route planning and navigation as well as making sure all waypoints are valid.
+
+    bool tooClose = true;
+    //while we have waypoints and they are tooClose to drive to
+    while (!waypoints.empty() && tooClose)
     {
-
-      ProcessData();
-      break;
-    }
-
-
-    case STATE_MACHINE_WAYPOINTS:
-    {
-      //cout << "STATE_MACHINE_WAYPOINTS: curLoc = " << currentLocation.x <<"," << currentLocation.y << endl;//DEBUGGING
-      //cout << "targetLoc = " << waypoints.back().x <<"," << waypoints.back().y << endl;//DEBUGGING
-      //Handles route planning and navigation as well as making sure all waypoints are valid.
-
-      bool tooClose = true;
-      //while we have waypoints and they are tooClose to drive to
-      while (!waypoints.empty() && tooClose)
+      //check next waypoint for distance
+      if (hypot(waypoints.back().x-currentLocation.x, waypoints.back().y-currentLocation.y) < waypointTolerance)
       {
-        //check next waypoint for distance
-        if (hypot(waypoints.back().x-currentLocation.x, waypoints.back().y-currentLocation.y) < waypointTolerance)//tol = 15 cm
-        {
-          //if too close remove it
-          waypoints.pop_back();
-        }
-        else
-        {
-          //this waypoint is far enough to be worth driving to
-          tooClose = false;
-        }
-      }
-
-      //if we are out of waypoints then interupt and return to logic controller
-      if (waypoints.empty())
-      {
-        stateMachineState = STATE_MACHINE_WAITING;
-        result.type = behavior;
-        interupt = true;
-        return result;
+        //if too close remove it
+        waypoints.pop_back();
       }
       else
       {
-        //select setpoint for heading and begin driving to the next waypoint
-        stateMachineState = STATE_MACHINE_ROTATE;
-        waypoints.back().theta = atan2(waypoints.back().y - currentLocation.y, waypoints.back().x - currentLocation.x);//set theta to relative theta to goal
-        result.pd.setPointYaw = waypoints.back().theta;
-
-        rotateTimeCnt = 0;//for hang5
-        rotateDirSwitchCount = 0;//reset for use in STATE_MACHINE_ROTATE
-        waitTime = time(0);//timer for how long swarmie has been rotating
-        //cout << "**************************************************************************" << endl; //DEBUGGING CODE
-        //cout << "Waypoint x : " << waypoints.back().x << " y : " << waypoints.back().y << endl; //DEBUGGING CODE
-        //fall through on purpose
+        //this waypoint is far enough to be worth driving to
+        tooClose = false;
       }
     }
-
-    case STATE_MACHINE_ROTATE:
+    
+    //if we are out of waypoints then interupt and return to logic controller
+    if (waypoints.empty())
     {
-      //cout << "ROTATING: curLoc = " << currentLocation.x <<"," << currentLocation.y <<endl;//DEBUGGING
-      // Calculate angle between currentLocation.theta and waypoints.front().theta
-      // Rotate left or right depending on sign of angle
-      // Stay in this state until angle is minimized
-
-      waypoints.back().theta = atan2(waypoints.back().y - currentLocation.y, waypoints.back().x - currentLocation.x);
-
-      //Calculate the diffrence between current and desired heading in radians.
-      //Swarmie has an issue where if the point is behind it, it sometimes rotates back and forth with errorYaw switching between ~-255 and ~255
-      //Counts amount of times swarmie switches and if >rotateCntTol (3) it just rotates right
-      /*if(rotateDirSwitchCount < rotateCntTol){
-        errorYawPrev = errorYaw; //save previous value for counting dirrection changes
-        errorYaw = angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta);
-        if ((errorYawPrev > 0 && errorYaw < 0) || (errorYawPrev < 0 && errorYaw > 0)){
-          rotateDirSwitchCount++;
-        }
-      }
-      else {*/
-        errorYaw = fabs(angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta));
-      //}
-      //end errorYaw calc
-
-      //timer for counting how long swarmie has been rotating, if longer than rotateTimeTol (15) then will slow down
-      /*elapsedTime = time(0); //TODO test to varrify, seems to be working, however one time running the swarmie it just stopped moving but that may be do to something else
-      if((elapsedTime - waitTime > rotateTimeTol) && (elapsedTime - waitTime < (rotateTimeTol*3))){//check rotate time
-        //if still rotating in place for rotateTimeTol*3 go back to initial speed, catch for if it stops moving
-        rotateScale = 2;
-      }
-      else {//normal speed if it hasn't rotated for long enough or for too long
-        rotateScale = 1;
-      }*/
-      //end timer
-
-      //cout << "ROTATE Error yaw:  " << errorYaw << " target heading: " << waypoints.back().theta << ", current heading: " << currentLocation.theta << endl; //DEBUGGING CODE
-      //cout << "Waypoint: " << waypoints.back().x << "," << waypoints.back().y << " currentLoc: " << currentLocation.x << "," << currentLocation.y << endl; //DEBUGGING CODE
-
-      result.pd.setPointVel = 0.0;
-      //Calculate absolute value of angle
-
-      float abs_error = fabs(angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta));
-
-      // If angle > rotateOnlyAngleTolerance radians rotate but dont drive forward.
-      if (abs_error > rotateOnlyAngleTolerance) //if angle > tolerance then break so no go forward
-      {
-        // rotate but dont drive.
-        if (result.PIDMode == FAST_PID)
-        {
-          if (rotateTimeCnt < rotateTimeAmt){//run fastPId for #rotateTimeAmt (5) pulses then wait for camera to catch up
-            fastPID(0.0, errorYaw, result.pd.setPointVel, result.pd.setPointYaw, 1);
-            rotateTimeCnt++;
-          }/*else{
-            waitTime = time(0);//get current time for hang5 timer
-            savedState = STATE_MACHINE_ROTATE;
-            stateMachineState = STATE_MACHINE_HANG_10;//to make pause for a little after each movement
-            rotateTimeCnt = 0;
-          }*/
-        }
-
-        break;
-      }
-      else
-      {
-        //move to differential drive step
-        stateMachineState = STATE_MACHINE_SKID_STEER;
-        break;
-      }
+      stateMachineState = STATE_MACHINE_WAITING;
+      result.type = behavior;
+      interupt = true;
+      return result;
     }
-
-    case STATE_MACHINE_SKID_STEER: //return to this state until distance < tolerance
+    else
     {
-        // Calculate angle between currentLocation.x/y and waypoints.back().x/y
-        // Drive forward
-        // Stay in this state until angle is at least PI/2
-
-      // calculate the distance between current and desired heading in radians
-      //cout << "going 4ward: curLoc = " << currentLocation.x <<"," << currentLocation.y <<endl;//DEBUGGING
+      //select setpoint for heading and begin driving to the next waypoint
+      stateMachineState = STATE_MACHINE_ROTATE;
       waypoints.back().theta = atan2(waypoints.back().y - currentLocation.y, waypoints.back().x - currentLocation.x);
-      float errorYaw = angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta);
-      float distance = hypot(waypoints.back().x - currentLocation.x, waypoints.back().y - currentLocation.y);
+      result.pd.setPointYaw = waypoints.back().theta;
 
-      //cout << "Skid steer, Error yaw:  " << errorYaw << " target heading : " << waypoints.back().theta << " current heading : " << currentLocation.theta << " error distance : " << distance << endl; //DEBUGGING CODE
-      //cout << "Waypoint x : " << waypoints.back().x << " y : " << waypoints.back().y << " currentLoc x : " << currentLocation.x << " y : " << currentLocation.y << endl; //DEBUGGING CODE
+      //cout << "**************************************************************************" << endl; //DEBUGGING CODE
+      //cout << "Waypoint x : " << waypoints.back().x << " y : " << waypoints.back().y << endl; //DEBUGGING CODE
+      //fall through on purpose
+    }
+  }
 
+  case STATE_MACHINE_ROTATE:
+  {
 
+    // Calculate angle between currentLocation.theta and waypoints.front().theta
+    // Rotate left or right depending on sign of angle
+    // Stay in this state until angle is minimized
 
-      // goal not yet reached drive while maintaining proper heading.
-      if (fabs(errorYaw) < M_PI_2 &&  distance > waypointTolerance)
+    waypoints.back().theta = atan2(waypoints.back().y - currentLocation.y, waypoints.back().x - currentLocation.x);
+
+    // Calculate the diffrence between current and desired heading in radians.
+    float errorYaw = angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta);
+
+    //cout << "ROTATE Error yaw:  " << errorYaw << " target heading : " << waypoints.back().theta << " current heading : " << currentLocation.theta << endl; //DEBUGGING CODE
+    //cout << "Waypoint x : " << waypoints.back().x << " y : " << waypoints.back().y << " currentLoc x : " << currentLocation.x << " y : " << currentLocation.y << endl; //DEBUGGING CODE
+
+    result.pd.setPointVel = 0.0;
+    //Calculate absolute value of angle
+
+    float abs_error = fabs(angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta));
+
+    // If angle > rotateOnlyAngleTolerance radians rotate but dont drive forward.
+    if (abs_error > rotateOnlyAngleTolerance)
+    {
+      // rotate but dont drive.
+      if (result.PIDMode == FAST_PID)
       {
-        // drive and turn simultaniously
-        result.pd.setPointVel = searchVelocity;
-        if (result.PIDMode == FAST_PID)
-        {
-          //cout << "linear velocity:  " << linearVelocity << endl; //DEBUGGING CODE
-          fastPID((searchVelocity-linearVelocity) ,errorYaw, result.pd.setPointVel, result.pd.setPointYaw, 1);
-        }
-      }
-      else {
-        // stopno change
-        waitTime = time(0);//get current time for hang10 timer
-        //savedState = STATE_MACHINE_WAYPOINTS;//for HANG_10
-        //stateMachineState = STATE_MACHINE_HANG_10;//to make pause for a little after each movement
-        stateMachineState = STATE_MACHINE_WAYPOINTS;
+        fastPID(0.0, errorYaw, result.pd.setPointVel, result.pd.setPointYaw);
       }
 
       break;
     }
-
-    case STATE_MACHINE_HANG_10://pause after each movement to let camera catch up and prevent blurring
-    {//not used, instead pause moved to ROS adapter
-      cout << "Hanging 10, return: " << savedState << endl;//DEBUGGING
-      //cout << "wait: " << waitTime << ", elapsed: " << elapsedTime <<endl;//DEBUGGING
-      right = 0;
-      left = 0;
-
-      elapsedTime = time(0);
-      if(elapsedTime - waitTime < waitLength){//wait for waitLength seconds
-        break;
-      }
-      else {
-        stateMachineState = savedState;
-        cout << "done hanging, bro" << endl;//DEBUGGING
-        break;
-      }
-    }
-
-    default:
+    else
     {
-      break;
+      //move to differential drive step
+      stateMachineState = STATE_MACHINE_SKID_STEER;
+
+      //fall through on purpose.
     }
+  }
+
+  case STATE_MACHINE_SKID_STEER:
+  {
+      // Calculate angle between currentLocation.x/y and waypoints.back().x/y
+      // Drive forward
+      // Stay in this state until angle is at least PI/2
+
+    // calculate the distance between current and desired heading in radians
+    waypoints.back().theta = atan2(waypoints.back().y - currentLocation.y, waypoints.back().x - currentLocation.x);
+    float errorYaw = angles::shortest_angular_distance(currentLocation.theta, waypoints.back().theta);
+    float distance = hypot(waypoints.back().x - currentLocation.x, waypoints.back().y - currentLocation.y);
+
+    //cout << "Skid steer, Error yaw:  " << errorYaw << " target heading : " << waypoints.back().theta << " current heading : " << currentLocation.theta << " error distance : " << distance << endl; //DEBUGGING CODE
+    //cout << "Waypoint x : " << waypoints.back().x << " y : " << waypoints.back().y << " currentLoc x : " << currentLocation.x << " y : " << currentLocation.y << endl; //DEBUGGING CODE
+
+
+
+    // goal not yet reached drive while maintaining proper heading.
+    if (fabs(errorYaw) < M_PI_2 &&  distance > waypointTolerance)
+    {
+      // drive and turn simultaniously
+      result.pd.setPointVel = searchVelocity;
+      if (result.PIDMode == FAST_PID)
+      {
+        //cout << "linear velocity:  " << linearVelocity << endl; //DEBUGGING CODE
+        fastPID((searchVelocity-linearVelocity) ,errorYaw, result.pd.setPointVel, result.pd.setPointYaw);
+      }
+    }
+    else {
+      // stopno change
+      left = 0.0;
+      right = 0.0;
+
+      // move back to transform step
+      stateMachineState = STATE_MACHINE_WAYPOINTS;
+    }
+
+    break;
+  }
+
+  default:
+  {
+    break;
+  }
 
 
   }
@@ -295,7 +238,7 @@ void DriveController::ProcessData()
 {
   //determine if the drive commands are waypoint or precision driving
   if (result.type == waypoint) {
-
+    
     //sets logic controller into stand by mode while drive controller works
     result.type = behavior;
     result.b = noChange;
@@ -318,7 +261,7 @@ void DriveController::ProcessData()
     {
       float vel = result.pd.cmdVel -linearVelocity;
       float setVel = result.pd.cmdVel;
-      fastPID(vel,result.pd.cmdAngularError, setVel, result.pd.setPointYaw, 1);
+      fastPID(vel,result.pd.cmdAngularError, setVel, result.pd.setPointYaw);
     }
     else if (result.PIDMode == SLOW_PID)
     {
@@ -342,8 +285,8 @@ void DriveController::ProcessData()
 }
 
 
-void DriveController::fastPID(float errorVel, float errorYaw , float setPointVel, float setPointYaw, int scale)
-{//TODO tested and seems to be working but might be messing up the distances. ie. does .5m at 1 but only .25m at 2
+void DriveController::fastPID(float errorVel, float errorYaw , float setPointVel, float setPointYaw)
+{
 
   // cout << "PID FAST" << endl; //DEBUGGING CODE
 
@@ -352,18 +295,15 @@ void DriveController::fastPID(float errorVel, float errorYaw , float setPointVel
 
   int left = velOut - yawOut; //combine yaw and vel PWM values
   int right = velOut + yawOut; //left and right are the same for vel output but opposite for yaw output
-  //cout << "Left: " << left << ", Right: " << right << endl;//DEBUGGING
-  //cout << "velOut ''" << velOut << ", yawOut " << yawOut << endl;//DEBUGGING
-  //cout << "errorYaw: " << errorYaw << ", setPointYaw: " << setPointYaw << endl;//DEBUGGING
 
   //prevent combine output from going over tihs value
-  int sat = 180;
+  int sat = 180; 
   if (left  >  sat) {left  =  sat;}
   if (left  < -sat) {left  = -sat;}
   if (right >  sat) {right =  sat;}
   if (right < -sat) {right = -sat;}
-  this->left = (left/scale);//divides by scale factor, should normally be 1
-  this->right = (right/scale);
+  this->left = left;
+  this->right = right;
 }
 
 void DriveController::slowPID(float errorVel,float errorYaw, float setPointVel, float setPointYaw)

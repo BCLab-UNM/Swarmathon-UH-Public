@@ -14,18 +14,20 @@ pkill static_transform_publisher
 source "../devel/setup.bash"
 export GAZEBO_MODEL_PATH="../simulation/models"
 export GAZEBO_PLUGIN_PATH="../build/gazebo_plugins"
+#hopefully return HOST_IP, but might not work
+export ROS_IP=$( ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' )
+##########DISABLE MY FIREWALL WITH SUDO UFW DISABLE
 
 #Point to ROS master on the network
 echo "point to ROS master on the network"
-if [ -z "$2" ]
+if [ -z "$1" ]
 then
-    echo "Usage: ./rover_onboard_node_launch.sh master_hostname calibration_location"
+    echo "Error: ROS_MASTER_URI hostname was not provided"
     exit 1
 else
     export ROS_MASTER_URI=http://$1:11311
 
 fi
-
 
 #Set prefix to fully qualify transforms for each robot
 echo "set prefix to fully qualify transforms for each robot: $HOSTNAME"
@@ -52,9 +54,6 @@ findDevicePath() {
 
 
 #Startup ROS packages/processes
-echo "Loading calibration data and swarmie_control sketch"
-./load_swarmie_control_sketch.sh $2
-
 echo "rosrun tf static_transform_publisher"
 nohup > logs/$HOSTNAME"_transform_log.txt" rosrun tf static_transform_publisher __name:=$HOSTNAME\_BASE2CAM 0.12 -0.03 0.195 -1.57 0 -2.22 /$HOSTNAME/base_link /$HOSTNAME/camera_link 100 &
 echo "rosrun video_stream_opencv"
@@ -67,6 +66,18 @@ echo $(realpath ..)/camera_info/head_camera.yaml
 
 echo "rosrun behaviours"
 nohup > logs/$HOSTNAME"_behaviours_log.txt" rosrun behaviours behaviours &
+
+#only start MASTER_NAMELIST if it has not been started on different swarmie#not needed since nodes autoshutdown when sharing a name
+#rosnode ping -c1 /MASTER_NAMELIST
+#if ! [ $? -eq 0 ]; #almost works, when running ssh (swarmie), error cannot communicate with master
+#need to share hostname or something, try with different computer
+#then
+  echo "rosrun namelist"
+  nohup rosrun rover_name rover_name_node &
+#else
+#  echo "MASTER_NAMELIST already started"
+#fi
+
 echo "rosrun obstacle_detection"
 nohup rosrun obstacle_detection obstacle &
 echo "rosrun diagnostics"

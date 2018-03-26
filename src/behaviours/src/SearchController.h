@@ -33,16 +33,19 @@ protected:
 
 private:
 
+  const float waypointTolerance = 0.15; //15 cm tolerance.
   random_numbers::RandomNumberGenerator* rng;
   Point currentLocation;
   Point centerLocation;
   Point searchLocation;
   int attemptCount = 0;
+  
   //struct for returning data to ROS adapter
   Result result;
 
   // Search state
   // Flag to allow special behaviour for the first waypoint
+  int x = 1;///debug
   bool first_waypoint = true;
   bool succesfullPickup = false;
 };
