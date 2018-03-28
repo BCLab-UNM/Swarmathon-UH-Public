@@ -1,0 +1,1 @@
+git will not allow adding empty directories, so this is why this file was created.
